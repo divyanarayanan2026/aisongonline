@@ -19,6 +19,11 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Explicit root route (needed for some deployment platforms)
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 // Rate limiting
 const limiter = rateLimit({ windowMs: 60 * 1000, max: 30, message: { error: 'Too many requests, please wait a moment.' } });
 app.use('/api/', limiter);
