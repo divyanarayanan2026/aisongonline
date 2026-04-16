@@ -4,6 +4,7 @@ node_modules/
 .DS_Store
 Thumbs.db
 uploads/
+data/
 *.bat
 setup.ps1
 SETUP.md

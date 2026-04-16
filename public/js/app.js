@@ -280,15 +280,24 @@ async function handleGenerate() {
   };
 
   try {
+    const authHdrs = (typeof Auth !== 'undefined') ? Auth.authHeaders() : {};
     const res = await fetch('/api/generate-lyrics', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHdrs },
       body: JSON.stringify(payload),
     });
     const data = await res.json();
+    if (data.upgradeRequired) {
+      showLoading(false);
+      showToast(data.error, 'error');
+      if (typeof Auth !== 'undefined') Auth.openPricing();
+      return;
+    }
     if (!data.success) throw new Error(data.error || 'Generation failed');
     state.currentSong = data.song;
     displaySong(data.song);
+    // Refresh usage after generation
+    if (typeof Auth !== 'undefined') Auth.refreshMe();
     showToast(`"${data.song.title}" created!`, 'success');
   } catch (e) {
     showLoading(false);

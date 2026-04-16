@@ -12,5 +12,21 @@ services:
         sync: false
       - key: REPLICATE_API_KEY
         sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CONTACT_EMAIL
+        value: divyanarayanan2026@gmail.com
+      - key: EMAIL_PASS
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_STARTER
+        sync: false
+      - key: STRIPE_PRICE_PRO
+        sync: false
+      - key: APP_URL
+        value: https://aisongonline.onrender.com
       - key: PORT
         value: 10000

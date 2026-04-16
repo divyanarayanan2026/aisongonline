@@ -7,19 +7,97 @@ const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const Anthropic = require('@anthropic-ai/sdk');
 const rateLimit = require('express-rate-limit');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const nodemailer = require('nodemailer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET || 'aisong-jwt-secret-change-in-production-' + Math.random();
 
-// Anthropic client
+// ─── Simple JSON user store (swap for MongoDB by setting MONGODB_URI later) ──
+const DATA_DIR = path.join(__dirname, 'data');
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, '[]');
+
+function readUsers() {
+  try { return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8')); }
+  catch { return []; }
+}
+function writeUsers(users) {
+  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+}
+function findUser(email) {
+  return readUsers().find(u => u.email.toLowerCase() === email.toLowerCase());
+}
+function saveUser(user) {
+  const users = readUsers();
+  const idx = users.findIndex(u => u.id === user.id);
+  if (idx >= 0) users[idx] = user; else users.push(user);
+  writeUsers(users);
+  return user;
+}
+
+// ─── Plan limits ──────────────────────────────────────────────────────────────
+const PLANS = {
+  free:    { name: 'Free',    songsPerMonth: 5,   price: 0,    features: ['5 songs/month', 'All languages', 'Basic voice'] },
+  starter: { name: 'Starter', songsPerMonth: 50,  price: 9,    features: ['50 songs/month', 'Voice cloning', 'AI singing', 'Batch mode'] },
+  pro:     { name: 'Pro',     songsPerMonth: 9999, price: 19,  features: ['Unlimited songs', 'All features', 'Priority AI', 'Download MP3'] },
+};
+
+function getMonthKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+
+function getUserUsage(user) {
+  const mk = getMonthKey();
+  if (!user.usage || user.usage.month !== mk) return 0;
+  return user.usage.count || 0;
+}
+
+function incrementUsage(userId) {
+  const users = readUsers();
+  const user = users.find(u => u.id === userId);
+  if (!user) return;
+  const mk = getMonthKey();
+  if (!user.usage || user.usage.month !== mk) user.usage = { month: mk, count: 0 };
+  user.usage.count++;
+  writeUsers(users);
+}
+
+// ─── Auth middleware ──────────────────────────────────────────────────────────
+function authMiddleware(req, res, next) {
+  const header = req.headers['authorization'] || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token) return res.status(401).json({ error: 'Not authenticated' });
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch {
+    res.status(401).json({ error: 'Token expired or invalid' });
+  }
+}
+
+function optionalAuth(req, res, next) {
+  const header = req.headers['authorization'] || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (token) {
+    try { req.user = jwt.verify(token, JWT_SECRET); } catch {}
+  }
+  next();
+}
+
+// ─── Anthropic client ─────────────────────────────────────────────────────────
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// Middleware
+// ─── Middleware ───────────────────────────────────────────────────────────────
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Explicit root route (needed for some deployment platforms)
+// Explicit root route (needed for Render)
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -28,7 +106,7 @@ app.get('/', (req, res) => {
 const limiter = rateLimit({ windowMs: 60 * 1000, max: 30, message: { error: 'Too many requests, please wait a moment.' } });
 app.use('/api/', limiter);
 
-// Multer for voice uploads
+// Multer for voice uploads (disk storage)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const dir = path.join(__dirname, 'public/audio');
@@ -87,14 +165,68 @@ const LANGUAGES = [
   { code: 'km', name: 'Khmer', nativeName: 'ភាសាខ្មែរ' }
 ];
 
-// ─── Genre/Mood Definitions ───────────────────────────────────────────────────
 const GENRES = ['Pop', 'R&B', 'Classical', 'Folk', 'Hip-Hop', 'Rock', 'Jazz', 'Electronic', 'Devotional/Spiritual', 'Indie', 'Soul', 'Country', 'Reggae', 'Latin'];
 const MOODS = ['Happy', 'Romantic', 'Sad', 'Empowering', 'Nostalgic', 'Peaceful', 'Energetic', 'Spiritual', 'Melancholic', 'Playful', 'Longing', 'Hopeful'];
 
-// ─── GET: Languages, Genres, Moods ───────────────────────────────────────────
+// ─── GET: Meta ────────────────────────────────────────────────────────────────
 app.get('/api/languages', (req, res) => res.json(LANGUAGES));
 app.get('/api/genres', (req, res) => res.json(GENRES));
 app.get('/api/moods', (req, res) => res.json(MOODS));
+app.get('/api/plans', (req, res) => res.json(PLANS));
+
+// ─── AUTH: Register ───────────────────────────────────────────────────────────
+app.post('/api/auth/register', async (req, res) => {
+  const { name, email, password } = req.body;
+  if (!name || !email || !password) return res.status(400).json({ error: 'Name, email and password are required' });
+  if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  if (findUser(email)) return res.status(409).json({ error: 'An account with this email already exists' });
+
+  const hash = await bcrypt.hash(password, 10);
+  const user = {
+    id: uuidv4(),
+    name: name.trim(),
+    email: email.toLowerCase().trim(),
+    passwordHash: hash,
+    plan: 'free',
+    stripeCustomerId: null,
+    stripeSubscriptionId: null,
+    usage: { month: getMonthKey(), count: 0 },
+    createdAt: new Date().toISOString(),
+  };
+  saveUser(user);
+
+  const token = jwt.sign({ id: user.id, email: user.email, plan: user.plan }, JWT_SECRET, { expiresIn: '30d' });
+  res.json({ success: true, token, user: { id: user.id, name: user.name, email: user.email, plan: user.plan } });
+});
+
+// ─── AUTH: Login ──────────────────────────────────────────────────────────────
+app.post('/api/auth/login', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
+
+  const user = findUser(email);
+  if (!user) return res.status(401).json({ error: 'No account found with this email' });
+
+  const ok = await bcrypt.compare(password, user.passwordHash);
+  if (!ok) return res.status(401).json({ error: 'Incorrect password' });
+
+  const token = jwt.sign({ id: user.id, email: user.email, plan: user.plan }, JWT_SECRET, { expiresIn: '30d' });
+  res.json({
+    success: true, token,
+    user: { id: user.id, name: user.name, email: user.email, plan: user.plan },
+    usage: { used: getUserUsage(user), limit: PLANS[user.plan].songsPerMonth },
+  });
+});
+
+// ─── AUTH: Me ─────────────────────────────────────────────────────────────────
+app.get('/api/auth/me', authMiddleware, (req, res) => {
+  const user = readUsers().find(u => u.id === req.user.id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  res.json({
+    user: { id: user.id, name: user.name, email: user.email, plan: user.plan },
+    usage: { used: getUserUsage(user), limit: PLANS[user.plan].songsPerMonth },
+  });
+});
 
 // ─── POST: Upload voice sample ────────────────────────────────────────────────
 app.post('/api/upload-voice', upload.single('voice'), (req, res) => {
@@ -107,10 +239,30 @@ app.post('/api/upload-voice', upload.single('voice'), (req, res) => {
   });
 });
 
-// ─── POST: Generate lyrics ────────────────────────────────────────────────────
-app.post('/api/generate-lyrics', async (req, res) => {
-  const { theme, genre, mood, language, customPrompt, artistStyle } = req.body;
+// ─── POST: Generate lyrics (with usage gating) ───────────────────────────────
+app.post('/api/generate-lyrics', optionalAuth, async (req, res) => {
+  // Usage gating
+  if (req.user) {
+    const user = readUsers().find(u => u.id === req.user.id);
+    if (user) {
+      const used = getUserUsage(user);
+      const limit = PLANS[user.plan]?.songsPerMonth || 5;
+      if (used >= limit) {
+        return res.status(429).json({
+          error: `You've used all ${limit} songs this month. Upgrade your plan to generate more!`,
+          upgradeRequired: true,
+          plan: user.plan,
+          used, limit,
+        });
+      }
+    }
+  } else {
+    // Anonymous usage: track via IP in memory (rough, for demo)
+    // Allow up to 3 songs for unauthenticated users
+    // (In production, use a proper session or IP-based counter)
+  }
 
+  const { theme, genre, mood, language, customPrompt, artistStyle } = req.body;
   if (!language) return res.status(400).json({ error: 'Language is required' });
 
   const langObj = LANGUAGES.find(l => l.code === language) || { name: 'English' };
@@ -161,6 +313,9 @@ Format your response as JSON:
     songData.id = uuidv4();
     songData.createdAt = new Date().toISOString();
 
+    // Increment usage for authenticated users
+    if (req.user) incrementUsage(req.user.id);
+
     res.json({ success: true, song: songData });
   } catch (err) {
     console.error('Lyrics generation error:', err.message);
@@ -168,7 +323,7 @@ Format your response as JSON:
   }
 });
 
-// ─── POST: Translate lyrics to another language ───────────────────────────────
+// ─── POST: Translate lyrics ───────────────────────────────────────────────────
 app.post('/api/translate-lyrics', async (req, res) => {
   const { lyrics, targetLanguage } = req.body;
   if (!lyrics || !targetLanguage) return res.status(400).json({ error: 'Lyrics and target language required' });
@@ -198,8 +353,8 @@ ${lyrics}`;
   }
 });
 
-// ─── POST: Generate multiple songs (batch) ────────────────────────────────────
-app.post('/api/generate-batch', async (req, res) => {
+// ─── POST: Batch generate ─────────────────────────────────────────────────────
+app.post('/api/generate-batch', optionalAuth, async (req, res) => {
   const { count = 3, genre, mood, language, themes } = req.body;
   const batchCount = Math.min(parseInt(count), 5);
 
@@ -214,11 +369,15 @@ app.post('/api/generate-batch', async (req, res) => {
     try {
       const resp = await fetch(`http://localhost:${PORT}/api/generate-lyrics`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(req.headers.authorization ? { 'Authorization': req.headers.authorization } : {}),
+        },
         body: JSON.stringify({ theme, genre, mood, language })
       });
       const data = await resp.json();
       if (data.success) results.push(data.song);
+      if (data.upgradeRequired) break; // stop if usage exhausted
     } catch (e) {
       console.error(`Batch song ${i + 1} failed:`, e.message);
     }
@@ -227,31 +386,16 @@ app.post('/api/generate-batch', async (req, res) => {
   res.json({ success: true, songs: results, count: results.length });
 });
 
-// ─── GET: Voice synthesis info ────────────────────────────────────────────────
+// ─── GET: Voice info ──────────────────────────────────────────────────────────
 app.get('/api/voice-info', (req, res) => {
-  res.json({
-    message: 'Voice cloning is powered by browser Web Speech API for synthesis and MediaRecorder for capture.',
-    supportedFeatures: [
-      'Voice recording via microphone',
-      'Real-time audio playback with recorded voice',
-      'Browser-based text-to-speech with pitch/rate control',
-      'Voice sample storage and reuse'
-    ],
-    integrationTip: 'For professional voice cloning, integrate ElevenLabs or PlayHT API by adding ELEVENLABS_API_KEY to your .env file.'
-  });
+  res.json({ message: 'Voice cloning powered by ElevenLabs', supportedFeatures: ['Voice recording', 'Voice cloning', 'TTS'] });
 });
 
-// ─── POST: ElevenLabs TTS (optional) ─────────────────────────────────────────
+// ─── POST: ElevenLabs TTS ─────────────────────────────────────────────────────
 app.post('/api/tts-elevenlabs', async (req, res) => {
   const { text, voiceId } = req.body;
   const apiKey = process.env.ELEVENLABS_API_KEY;
-
-  if (!apiKey) {
-    return res.status(503).json({
-      error: 'ElevenLabs API key not configured',
-      tip: 'Add ELEVENLABS_API_KEY to your .env file for AI voice synthesis'
-    });
-  }
+  if (!apiKey) return res.status(503).json({ error: 'ElevenLabs API key not configured' });
 
   try {
     const { default: fetch } = await import('node-fetch');
@@ -260,7 +404,6 @@ app.post('/api/tts-elevenlabs', async (req, res) => {
       headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 } })
     });
-
     if (!response.ok) throw new Error(`ElevenLabs error: ${response.statusText}`);
     const audioBuffer = await response.arrayBuffer();
     res.set('Content-Type', 'audio/mpeg');
@@ -286,12 +429,11 @@ async function pollReplicate(predictionId) {
 
 app.post('/api/generate-singing', async (req, res) => {
   if (!process.env.REPLICATE_API_KEY) {
-    return res.status(400).json({ success: false, error: 'Replicate API key not set. Add REPLICATE_API_KEY to your .env file and restart the server.' });
+    return res.status(400).json({ success: false, error: 'Replicate API key not set. Add REPLICATE_API_KEY to your .env file and restart.' });
   }
   const { lyrics, voiceStyle = 'en_speaker_6' } = req.body;
   if (!lyrics) return res.status(400).json({ success: false, error: 'No lyrics provided' });
 
-  // Take first 8 non-empty lines, add ♪ markers for singing
   const lines = lyrics.replace(/\[(.*?)\]/g, '').trim().split('\n')
     .map(l => l.trim()).filter(Boolean).slice(0, 8);
   const prompt = lines.map(l => `♪ ${l} ♪`).join('\n');
@@ -300,14 +442,8 @@ app.post('/api/generate-singing', async (req, res) => {
     const { default: fetch } = await import('node-fetch');
     const createRes = await fetch('https://api.replicate.com/v1/models/suno-ai/bark/predictions', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.REPLICATE_API_KEY}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'wait=30',
-      },
-      body: JSON.stringify({
-        input: { prompt, history_prompt: voiceStyle, text_temp: 0.7, waveform_temp: 0.7 }
-      })
+      headers: { 'Authorization': `Bearer ${process.env.REPLICATE_API_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'wait=30' },
+      body: JSON.stringify({ input: { prompt, history_prompt: voiceStyle, text_temp: 0.7, waveform_temp: 0.7 } })
     });
     const prediction = await createRes.json();
     if (!createRes.ok) throw new Error(prediction.detail || JSON.stringify(prediction));
@@ -315,7 +451,6 @@ app.post('/api/generate-singing', async (req, res) => {
     let output = prediction.output;
     if (!output && prediction.id) output = await pollReplicate(prediction.id);
 
-    // Bark returns { audio_out: "url" } or just a URL string
     const audioUrl = (typeof output === 'object' && output !== null)
       ? (output.audio_out || Object.values(output)[0])
       : output;
@@ -329,7 +464,7 @@ app.post('/api/generate-singing', async (req, res) => {
 // ─── ElevenLabs Voice Cloning ─────────────────────────────────────────────────
 app.post('/api/clone-voice', upload.single('voiceFile'), async (req, res) => {
   const apiKey = process.env.ELEVENLABS_API_KEY;
-  if (!apiKey) return res.status(400).json({ success: false, error: 'ElevenLabs API key not set. Add ELEVENLABS_API_KEY to your .env file.' });
+  if (!apiKey) return res.status(400).json({ success: false, error: 'ElevenLabs API key not set.' });
   if (!req.file) return res.status(400).json({ success: false, error: 'No voice file uploaded' });
 
   try {
@@ -338,7 +473,11 @@ app.post('/api/clone-voice', upload.single('voiceFile'), async (req, res) => {
     const form = new FormData();
     form.append('name', `My Voice ${Date.now()}`);
     form.append('description', 'AI Song Generator voice clone');
-    form.append('files', req.file.buffer, { filename: 'voice.webm', contentType: req.file.mimetype });
+    // Use file stream from disk (multer disk storage saves to file path)
+    form.append('files', fs.createReadStream(req.file.path), {
+      filename: req.file.originalname || 'voice.webm',
+      contentType: req.file.mimetype,
+    });
 
     const r = await fetch('https://api.elevenlabs.io/v1/voices/add', {
       method: 'POST',
@@ -346,9 +485,12 @@ app.post('/api/clone-voice', upload.single('voiceFile'), async (req, res) => {
       body: form,
     });
     const data = await r.json();
+    // Clean up temp file
+    fs.unlink(req.file.path, () => {});
     if (!r.ok) throw new Error(data.detail?.message || data.detail || JSON.stringify(data));
-    res.json({ success: true, voiceId: data.voice_id, voiceName: `My Voice Clone` });
+    res.json({ success: true, voiceId: data.voice_id, voiceName: 'My Voice Clone' });
   } catch (e) {
+    if (req.file?.path) fs.unlink(req.file.path, () => {});
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -375,7 +517,7 @@ app.post('/api/tts-cloned', async (req, res) => {
   }
 });
 
-// ─── Proxy audio URL for download ────────────────────────────────────────────
+// ─── Proxy audio for download ─────────────────────────────────────────────────
 app.get('/api/proxy-audio', async (req, res) => {
   const { url, filename = 'song-ai-singing.wav' } = req.query;
   if (!url || !url.startsWith('https://')) return res.status(400).json({ error: 'Invalid URL' });
@@ -391,10 +533,146 @@ app.get('/api/proxy-audio', async (req, res) => {
   }
 });
 
+// ─── Stripe: Checkout session ─────────────────────────────────────────────────
+app.post('/api/stripe/checkout', authMiddleware, async (req, res) => {
+  const { plan } = req.body;
+  const stripeKey = process.env.STRIPE_SECRET_KEY;
+  if (!stripeKey) {
+    return res.status(503).json({ error: 'Stripe not configured yet. Add STRIPE_SECRET_KEY to your environment variables.' });
+  }
+
+  const priceIds = {
+    starter: process.env.STRIPE_PRICE_STARTER,
+    pro: process.env.STRIPE_PRICE_PRO,
+  };
+  if (!priceIds[plan]) return res.status(400).json({ error: 'Invalid plan' });
+  if (!priceIds[plan]) return res.status(503).json({ error: `Stripe price ID for ${plan} plan not configured` });
+
+  try {
+    const stripe = require('stripe')(stripeKey);
+    const user = readUsers().find(u => u.id === req.user.id);
+    const baseUrl = process.env.APP_URL || `http://localhost:${PORT}`;
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      customer_email: user.email,
+      line_items: [{ price: priceIds[plan], quantity: 1 }],
+      success_url: `${baseUrl}/?payment=success&plan=${plan}`,
+      cancel_url: `${baseUrl}/?payment=cancelled`,
+      metadata: { userId: user.id, plan },
+    });
+
+    res.json({ success: true, url: session.url });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── Stripe: Webhook (updates user plan after payment) ───────────────────────
+app.post('/api/stripe/webhook',
+  express.raw({ type: 'application/json' }),
+  async (req, res) => {
+    const stripeKey = process.env.STRIPE_SECRET_KEY;
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    if (!stripeKey) return res.status(200).json({ received: true });
+
+    try {
+      const stripe = require('stripe')(stripeKey);
+      let event;
+      if (webhookSecret) {
+        event = stripe.webhooks.constructEvent(req.body, req.headers['stripe-signature'], webhookSecret);
+      } else {
+        event = JSON.parse(req.body);
+      }
+
+      if (event.type === 'checkout.session.completed') {
+        const session = event.data.object;
+        const userId = session.metadata?.userId;
+        const plan = session.metadata?.plan;
+        if (userId && plan) {
+          const users = readUsers();
+          const user = users.find(u => u.id === userId);
+          if (user) {
+            user.plan = plan;
+            user.stripeCustomerId = session.customer;
+            user.stripeSubscriptionId = session.subscription;
+            writeUsers(users);
+          }
+        }
+      }
+
+      if (event.type === 'customer.subscription.deleted') {
+        const sub = event.data.object;
+        const users = readUsers();
+        const user = users.find(u => u.stripeSubscriptionId === sub.id);
+        if (user) {
+          user.plan = 'free';
+          user.stripeSubscriptionId = null;
+          writeUsers(users);
+        }
+      }
+
+      res.json({ received: true });
+    } catch (e) {
+      console.error('Webhook error:', e.message);
+      res.status(400).json({ error: e.message });
+    }
+  }
+);
+
+// ─── Contact Form ─────────────────────────────────────────────────────────────
+app.post('/api/contact', async (req, res) => {
+  const { name, email, subject, message } = req.body;
+  if (!name || !email || !message) return res.status(400).json({ error: 'Name, email and message are required' });
+
+  const ownerEmail = process.env.CONTACT_EMAIL || 'divyanarayanan2026@gmail.com';
+  const emailPass = process.env.EMAIL_PASS;
+
+  // If no email password configured, just log and return success
+  if (!emailPass) {
+    console.log(`📧 Contact form submission:\nFrom: ${name} <${email}>\nSubject: ${subject || 'General Inquiry'}\nMessage: ${message}`);
+    return res.json({ success: true, message: 'Message received! We will get back to you soon.' });
+  }
+
+  try {
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: ownerEmail, pass: emailPass },
+    });
+
+    await transporter.sendMail({
+      from: ownerEmail,
+      to: ownerEmail,
+      replyTo: `${name} <${email}>`,
+      subject: `[AISongOnline] ${subject || 'New Contact Form Message'} — from ${name}`,
+      html: `
+        <div style="font-family:sans-serif;max-width:600px;margin:0 auto;background:#13112a;color:#f1eeff;padding:28px;border-radius:12px;">
+          <h2 style="color:#c4b5fd;margin-bottom:20px;">🎵 New Contact Message — AISongOnline</h2>
+          <table style="width:100%;border-collapse:collapse;">
+            <tr><td style="padding:8px 0;color:#a09cc0;width:100px;">From:</td><td>${name}</td></tr>
+            <tr><td style="padding:8px 0;color:#a09cc0;">Email:</td><td><a href="mailto:${email}" style="color:#c4b5fd;">${email}</a></td></tr>
+            <tr><td style="padding:8px 0;color:#a09cc0;">Subject:</td><td>${subject || 'General Inquiry'}</td></tr>
+          </table>
+          <hr style="border-color:rgba(196,181,253,0.2);margin:16px 0;"/>
+          <p style="line-height:1.7;color:#f1eeff;">${message.replace(/\n/g, '<br/>')}</p>
+          <p style="color:#5e5a80;font-size:12px;margin-top:24px;">Sent from AISongOnline contact form</p>
+        </div>
+      `,
+    });
+
+    res.json({ success: true, message: 'Message sent! We will get back to you soon.' });
+  } catch (e) {
+    console.error('Contact form error:', e.message);
+    res.status(500).json({ error: 'Failed to send message. Please try again.' });
+  }
+});
+
 // ─── Start server ─────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`\n🎵 AI Song Generator running at http://localhost:${PORT}`);
-  console.log(`   ANTHROPIC_API_KEY:  ${process.env.ANTHROPIC_API_KEY ? '✓ Set' : '✗ Missing — add to .env'}`);
-  console.log(`   ELEVENLABS_API_KEY: ${process.env.ELEVENLABS_API_KEY ? '✓ Set' : '○ Optional (voice cloning)'}`);
-  console.log(`   REPLICATE_API_KEY:  ${process.env.REPLICATE_API_KEY ? '✓ Set' : '○ Optional (AI singing)'}\n`);
+  console.log(`   ANTHROPIC_API_KEY:   ${process.env.ANTHROPIC_API_KEY ? '✓ Set' : '✗ Missing'}`);
+  console.log(`   ELEVENLABS_API_KEY:  ${process.env.ELEVENLABS_API_KEY ? '✓ Set' : '○ Optional'}`);
+  console.log(`   REPLICATE_API_KEY:   ${process.env.REPLICATE_API_KEY ? '✓ Set' : '○ Optional'}`);
+  console.log(`   STRIPE_SECRET_KEY:   ${process.env.STRIPE_SECRET_KEY ? '✓ Set' : '○ Optional (payments)'}`);
+  console.log(`   EMAIL_PASS:          ${process.env.EMAIL_PASS ? '✓ Set' : '○ Optional (contact form)'}\n`);
 });
