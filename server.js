@@ -93,6 +93,7 @@ function optionalAuth(req, res, next) {
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
+app.set('trust proxy', 1); // Required for Render / any reverse proxy (fixes rate-limit X-Forwarded-For error)
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
