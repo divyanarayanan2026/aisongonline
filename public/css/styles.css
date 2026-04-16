@@ -1,3 +1,6 @@
+/* ── Hidden utility (must be first so specificity can be overridden) ──────── */
+.hidden { display: none !important; }
+
 /* ── Reset & Base ─────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -239,10 +242,12 @@ body::after {
 .search-select-wrap .form-select { display: none; }
 .lang-dropdown {
   position: fixed; /* fixed so backdrop-filter stacking context can't clip it */
+  display: block;
   background: #211d48; border: 1px solid rgba(196,181,253,0.3);
   border-radius: var(--radius-xs); z-index: 99999;
   max-height: 260px; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.5);
 }
+.lang-dropdown.hidden { display: none !important; }
 .lang-dropdown-item {
   padding: 9px 14px; cursor: pointer; font-size: 0.875rem;
   display: flex; justify-content: space-between; align-items: center;
