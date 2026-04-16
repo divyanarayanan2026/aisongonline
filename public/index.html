@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Song Generator — Create Songs in Any Language</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,700;1,500&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon">🎵</span>
+        <span class="logo-text">AI<strong>Song</strong>Online</span>
+      </div>
+      <nav class="header-nav">
+        <button class="nav-btn active" data-tab="generate">Generate</button>
+        <button class="nav-btn" data-tab="voice">My Voice</button>
+        <button class="nav-btn" data-tab="batch">Batch Mode</button>
+        <button class="nav-btn" data-tab="library">Library</button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-content">
+      <h1 class="hero-title">
+        Your Voice.<br />
+        <em>Every Language.</em><br />
+        Infinite Songs.
+      </h1>
+      <p class="hero-subtitle">Record your voice, choose a language, and watch AI write and sing original songs just for you — in 44+ languages, any genre, unlimited times.</p>
+      <div class="hero-badges">
+        <span class="badge">44+ Languages</span>
+        <span class="badge">14 Genres</span>
+        <span class="badge">12 Moods</span>
+        <span class="badge">Unlimited Songs</span>
+      </div>
+    </div>
+    <div class="hero-visual">
+      <div class="waveform-display" id="heroWave">
+        <canvas id="heroWaveCanvas" width="320" height="80"></canvas>
+      </div>
+      <div class="floating-langs">
+        <span>தமிழ்</span><span>हिंदी</span><span>日本語</span>
+        <span>العربية</span><span>Español</span><span>한국어</span>
+        <span>Français</span><span>తెలుగు</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main App -->
+  <main class="main-container">
+
+    <!-- ── GENERATE TAB ── -->
+    <section class="tab-panel active" id="tab-generate">
+      <div class="two-col">
+
+        <!-- Left: Controls -->
+        <div class="controls-panel glass-card">
+          <h2 class="panel-title">Song Settings</h2>
+
+          <!-- Language -->
+          <div class="form-group">
+            <label class="form-label">Language <span class="required">*</span></label>
+            <div class="search-select-wrap">
+              <input type="text" class="search-input" id="langSearch" placeholder="Search language..." autocomplete="off" />
+              <select id="languageSelect" class="form-select" size="1">
+                <option value="">Loading languages...</option>
+              </select>
+              <div class="lang-dropdown hidden" id="langDropdown"></div>
+            </div>
+            <div class="selected-lang-pill hidden" id="selectedLangPill"></div>
+          </div>
+
+          <!-- Genre -->
+          <div class="form-group">
+            <label class="form-label">Genre</label>
+            <div class="chip-grid" id="genreChips"></div>
+          </div>
+
+          <!-- Mood -->
+          <div class="form-group">
+            <label class="form-label">Mood</label>
+            <div class="chip-grid" id="moodChips"></div>
+          </div>
+
+          <!-- Theme -->
+          <div class="form-group">
+            <label class="form-label">Theme / Topic</label>
+            <input type="text" id="themeInput" class="form-input" placeholder="e.g. missing my hometown, falling in love, finding strength..." />
+          </div>
+
+          <!-- Artist Style -->
+          <div class="form-group">
+            <label class="form-label">Style Inspired By <span class="optional">(optional)</span></label>
+            <input type="text" id="artistStyle" class="form-input" placeholder="e.g. A.R. Rahman, Taylor Swift, Ilaiyaraaja..." />
+          </div>
+
+          <!-- Custom Direction -->
+          <div class="form-group">
+            <label class="form-label">Custom Direction <span class="optional">(optional)</span></label>
+            <textarea id="customPrompt" class="form-textarea" rows="2" placeholder="Any specific lines, imagery, or story you want included..."></textarea>
+          </div>
+
+          <!-- Voice -->
+          <div class="form-group">
+            <label class="form-label">Voice Sample <span class="optional">(optional)</span></label>
+            <div class="voice-mini-panel" id="voiceMiniPanel">
+              <div class="voice-status" id="voiceStatusMini">
+                <span class="dot inactive"></span>
+                <span>No voice recorded — using browser voice</span>
+              </div>
+              <button class="btn btn-outline btn-sm" id="quickRecordBtn">
+                <span class="btn-icon">🎤</span> Record Now
+              </button>
+            </div>
+          </div>
+
+          <button class="btn btn-primary btn-large" id="generateBtn">
+            <span class="btn-icon">✨</span>
+            <span class="btn-text">Generate Song</span>
+          </button>
+        </div>
+
+        <!-- Right: Output -->
+        <div class="output-panel">
+          <!-- Placeholder state -->
+          <div class="output-placeholder glass-card" id="outputPlaceholder">
+            <div class="placeholder-icon">🎶</div>
+            <h3>Your song will appear here</h3>
+            <p>Fill in the settings and click Generate Song to create your original AI-written song in any language.</p>
+          </div>
+
+          <!-- Song card (hidden until generated) -->
+          <div class="song-card glass-card hidden" id="songCard">
+            <div class="song-card-header">
+              <div class="song-meta">
+                <h2 class="song-title" id="songTitle"></h2>
+                <div class="song-tags" id="songTags"></div>
+              </div>
+              <div class="song-actions-top">
+                <button class="icon-btn" id="copySongBtn" title="Copy lyrics">📋</button>
+                <button class="icon-btn" id="saveSongBtn" title="Save to library">💾</button>
+                <button class="icon-btn" id="regenerateBtn" title="Regenerate">🔄</button>
+              </div>
+            </div>
+
+            <!-- Player -->
+            <div class="player-section">
+              <div class="waveform-bar" id="playerWave">
+                <canvas id="playerWaveCanvas" width="400" height="50"></canvas>
+              </div>
+              <div class="player-controls">
+                <button class="play-btn" id="playBtn">
+                  <span id="playIcon">▶</span>
+                </button>
+                <div class="progress-wrap">
+                  <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                  </div>
+                  <span class="time-display" id="timeDisplay">0:00 / 0:00</span>
+                </div>
+                <div class="volume-wrap">
+                  <span>🔊</span>
+                  <input type="range" id="volumeSlider" min="0" max="1" step="0.05" value="0.9" class="volume-slider" />
+                </div>
+                <div class="speed-wrap">
+                  <label>Speed</label>
+                  <select id="speedSelect" class="speed-select">
+                    <option value="0.75">0.75×</option>
+                    <option value="1" selected>1×</option>
+                    <option value="1.25">1.25×</option>
+                    <option value="1.5">1.5×</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- ── Voice Changer ── -->
+            <div class="voice-changer-panel">
+              <div class="voice-changer-header">
+                <div class="voice-changer-title">
+                  <span>🎙</span> Voice Changer
+                </div>
+                <div style="display:flex;gap:6px;align-items:center;">
+                  <span style="font-size:0.75rem;color:var(--text-dim);">Applied to current song</span>
+                  <button class="btn btn-teal btn-sm" id="applyVoiceBtn">▶ Sing with this voice</button>
+                </div>
+              </div>
+
+              <!-- Presets -->
+              <div style="margin-bottom:12px;">
+                <div class="form-label" style="margin-bottom:8px;">Voice Presets</div>
+                <div class="voice-presets" id="voicePresets">
+                  <button class="voice-preset active" data-preset="natural">Natural</button>
+                  <button class="voice-preset" data-preset="deep">Deep Male</button>
+                  <button class="voice-preset" data-preset="soft">Soft Female</button>
+                  <button class="voice-preset" data-preset="child">Childlike</button>
+                  <button class="voice-preset" data-preset="elder">Elder</button>
+                  <button class="voice-preset" data-preset="robot">Robot</button>
+                  <button class="voice-preset" data-preset="whisper">Whisper</button>
+                  <button class="voice-preset" data-preset="dramatic">Dramatic</button>
+                </div>
+              </div>
+
+              <!-- Sliders -->
+              <div class="vc-grid">
+                <div class="vc-slider-row">
+                  <div class="vc-label">Pitch <span class="vc-val" id="vcPitchVal">1.0</span></div>
+                  <input type="range" class="vc-slider" id="vcPitch" min="0.3" max="2.0" step="0.05" value="1.0" />
+                </div>
+                <div class="vc-slider-row">
+                  <div class="vc-label">Speed <span class="vc-val" id="vcRateVal">0.90</span></div>
+                  <input type="range" class="vc-slider" id="vcRate" min="0.4" max="1.8" step="0.05" value="0.9" />
+                </div>
+                <div class="vc-slider-row">
+                  <div class="vc-label">Volume <span class="vc-val" id="vcVolVal">0.90</span></div>
+                  <input type="range" class="vc-slider" id="vcVol" min="0" max="1" step="0.05" value="0.9" />
+                </div>
+                <div class="vc-slider-row vc-voice-row">
+                  <div class="vc-label">Browser Voice</div>
+                  <select class="form-select" id="vcVoiceSelect" style="margin-top:6px;"></select>
+                </div>
+              </div>
+            </div>
+
+            <!-- ── AI Singing Panel ── -->
+            <div class="ai-singing-panel">
+              <div class="ai-singing-header">
+                <div class="ai-singing-title">🎵 AI Singing <span class="badge-powered">Bark · Replicate</span></div>
+                <button class="btn btn-singing" id="generateSingingBtn">Generate Singing</button>
+              </div>
+              <p class="ai-singing-desc">Turn lyrics into actual sung audio using Bark AI — then download as audio file. Requires a free <a href="https://replicate.com" target="_blank" class="link-accent">Replicate API key</a>.</p>
+
+              <div class="bark-voice-row">
+                <span class="form-label-sm">Voice Style:</span>
+                <div class="bark-voice-grid" id="barkVoiceGrid">
+                  <button class="bvbtn active" data-voice="en_speaker_6">Male 1</button>
+                  <button class="bvbtn" data-voice="en_speaker_3">Male 2</button>
+                  <button class="bvbtn" data-voice="en_speaker_9">Female 1</button>
+                  <button class="bvbtn" data-voice="en_speaker_0">Female 2</button>
+                  <button class="bvbtn" data-voice="en_speaker_4">Warm</button>
+                  <button class="bvbtn" data-voice="en_speaker_7">Deep</button>
+                </div>
+              </div>
+
+              <div class="singing-loading hidden" id="singingLoading">
+                <div class="music-bars-sm"><span></span><span></span><span></span><span></span></div>
+                <span>Generating singing audio (30–90 sec)…</span>
+              </div>
+
+              <div class="singing-result hidden" id="singingResult">
+                <audio controls id="singingAudio" class="singing-audio-player"></audio>
+                <div class="singing-dl-row">
+                  <button class="btn btn-teal btn-sm" id="downloadSingingBtn">⬇ Download Audio</button>
+                  <span class="singing-note" id="singingNote"></span>
+                </div>
+              </div>
+            </div>
+
+            <hr class="section-divider" />
+
+            <!-- Tabs: Lyrics / Translation / Notes -->
+            <div class="lyrics-tabs">
+              <button class="lyrics-tab active" data-ltab="lyrics">Lyrics</button>
+              <button class="lyrics-tab" data-ltab="translation">English Translation</button>
+              <button class="lyrics-tab" data-ltab="notes">Musical Notes</button>
+              <button class="lyrics-tab" data-ltab="translate">Translate To...</button>
+            </div>
+            <div class="lyrics-tab-content">
+              <div class="ltab-panel active" id="ltab-lyrics">
+                <pre class="lyrics-display" id="lyricsDisplay"></pre>
+              </div>
+              <div class="ltab-panel hidden" id="ltab-translation">
+                <pre class="lyrics-display translation" id="translationDisplay"></pre>
+              </div>
+              <div class="ltab-panel hidden" id="ltab-notes">
+                <div class="notes-card" id="notesDisplay"></div>
+              </div>
+              <div class="ltab-panel hidden" id="ltab-translate">
+                <div class="translate-control">
+                  <label>Translate lyrics to:</label>
+                  <select id="translateToSelect" class="form-select"></select>
+                  <button class="btn btn-outline" id="doTranslateBtn">Translate</button>
+                </div>
+                <pre class="lyrics-display translation" id="translatedLyricsDisplay"></pre>
+              </div>
+            </div>
+          </div>
+
+          <!-- Loading state -->
+          <div class="loading-card glass-card hidden" id="loadingCard">
+            <div class="loading-anim">
+              <div class="music-bars">
+                <span></span><span></span><span></span><span></span><span></span>
+              </div>
+            </div>
+            <h3 id="loadingMessage">Composing your song...</h3>
+            <p class="loading-sub" id="loadingSubMessage">Writing original lyrics in your chosen language</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── VOICE TAB ── -->
+    <section class="tab-panel hidden" id="tab-voice">
+      <div class="voice-studio glass-card">
+        <h2 class="panel-title">Voice Studio</h2>
+        <p class="panel-desc">Record your voice to personalize how your songs are read back to you. Your voice sample is stored locally in your browser.</p>
+
+        <div class="voice-recorder-main">
+          <div class="visualizer-wrap">
+            <canvas id="voiceCanvas" width="500" height="120"></canvas>
+            <div class="record-status" id="recordStatus">Ready to record</div>
+          </div>
+
+          <div class="recorder-controls">
+            <button class="btn btn-record" id="recordBtn">
+              <span class="record-icon" id="recordIcon">🎤</span>
+              <span id="recordBtnText">Start Recording</span>
+            </button>
+            <button class="btn btn-outline" id="stopRecordBtn" disabled>
+              <span>⏹</span> Stop
+            </button>
+            <button class="btn btn-outline" id="playRecordingBtn" disabled>
+              <span>▶</span> Play Back
+            </button>
+            <button class="btn btn-danger-outline" id="clearVoiceBtn" disabled>
+              <span>🗑</span> Clear
+            </button>
+          </div>
+
+          <div class="voice-settings">
+            <h3>Voice Synthesis Settings</h3>
+            <div class="form-group">
+              <label class="form-label">Pitch: <span id="pitchVal">1.0</span></label>
+              <input type="range" id="pitchSlider" min="0.5" max="2" step="0.1" value="1" class="range-slider" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Rate: <span id="rateVal">0.9</span></label>
+              <input type="range" id="rateSlider" min="0.5" max="1.8" step="0.05" value="0.9" class="range-slider" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Volume: <span id="volVal">0.9</span></label>
+              <input type="range" id="volSlider" min="0" max="1" step="0.05" value="0.9" class="range-slider" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Browser Voice</label>
+              <select id="voiceSelectTTS" class="form-select"></select>
+            </div>
+            <button class="btn btn-outline" id="testVoiceBtn">🎧 Test Voice</button>
+          </div>
+
+          <div class="voice-card" id="voiceCard">
+            <div class="voice-card-inner">
+              <div class="voice-avatar">🎤</div>
+              <div>
+                <p class="voice-card-label">Voice Profile</p>
+                <p class="voice-card-name" id="voiceCardName">No recording yet</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Voice Cloning Section -->
+          <!-- Upload Voice File -->
+          <div class="upload-voice-section">
+            <div class="upload-voice-header">
+              <span class="upload-voice-title">📁 Or Upload a Voice File</span>
+              <span class="upload-voice-sub">MP3, WAV, M4A, WebM — 30+ seconds recommended</span>
+            </div>
+            <label class="upload-drop-zone" id="voiceUploadZone">
+              <input type="file" id="voiceFileInput" accept="audio/*" style="display:none" />
+              <span class="upload-icon">🎵</span>
+              <span class="upload-label" id="uploadLabel">Click to choose a file or drag & drop here</span>
+            </label>
+          </div>
+
+          <!-- Voice Cloning Section -->
+            <div class="voice-clone-header">
+              <h3 class="voice-clone-title">🧬 AI Voice Cloning <span class="badge-powered">ElevenLabs</span></h3>
+              <p class="voice-clone-desc">Clone your voice using ElevenLabs — then generate songs spoken in your own voice. Requires a free <a href="https://elevenlabs.io" target="_blank" class="link-accent">ElevenLabs API key</a>.</p>
+            </div>
+
+            <div class="clone-steps-row">
+              <div class="clone-step-card">
+                <div class="clone-step-num">1</div>
+                <p>Record 30+ seconds of clear speech above (read anything aloud, no music/noise)</p>
+              </div>
+              <div class="clone-step-arrow">→</div>
+              <div class="clone-step-card">
+                <div class="clone-step-num">2</div>
+                <p>Click Clone Voice — your voice is sent to ElevenLabs and cloned</p>
+              </div>
+              <div class="clone-step-arrow">→</div>
+              <div class="clone-step-card">
+                <div class="clone-step-num">3</div>
+                <p>Go back to Generate and your cloned voice plays the lyrics automatically</p>
+              </div>
+            </div>
+
+            <div class="clone-actions">
+              <button class="btn btn-primary" id="cloneVoiceBtn" disabled>
+                <span>🧬</span> Clone My Voice
+              </button>
+              <span class="clone-status-text" id="cloneStatusText">Record your voice first to enable cloning</span>
+            </div>
+
+            <div class="clone-result hidden" id="cloneResult">
+              <div class="clone-success-badge">✓ Voice cloned successfully!</div>
+              <div class="clone-test-row">
+                <button class="btn btn-outline btn-sm" id="testClonedVoiceBtn">▶ Test Cloned Voice</button>
+                <button class="btn btn-danger-outline btn-sm" id="deleteCloneBtn">🗑 Remove Clone</button>
+              </div>
+              <audio controls id="clonedAudio" class="singing-audio-player hidden"></audio>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── BATCH TAB ── -->
+    <section class="tab-panel hidden" id="tab-batch">
+      <div class="batch-studio glass-card">
+        <h2 class="panel-title">Batch Song Generator</h2>
+        <p class="panel-desc">Generate multiple original songs at once — perfect for building a collection or exploring different themes.</p>
+
+        <div class="batch-controls">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Number of Songs</label>
+              <div class="count-control">
+                <button class="count-btn" id="countMinus">−</button>
+                <span class="count-display" id="batchCount">3</span>
+                <button class="count-btn" id="countPlus">+</button>
+              </div>
+              <small>Max 5 per batch</small>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Language</label>
+              <select id="batchLanguage" class="form-select"></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Genre</label>
+              <select id="batchGenre" class="form-select">
+                <option value="">Any Genre</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Mood</label>
+              <select id="batchMood" class="form-select">
+                <option value="">Any Mood</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Custom Themes (one per line, optional)</label>
+            <textarea id="batchThemes" class="form-textarea" rows="4" placeholder="love and longing&#10;celebrating friendship&#10;spiritual awakening&#10;nostalgia for home"></textarea>
+          </div>
+
+          <button class="btn btn-primary btn-large" id="batchGenerateBtn">
+            <span class="btn-icon">⚡</span>
+            <span class="btn-text">Generate Batch</span>
+          </button>
+        </div>
+
+        <div class="batch-results hidden" id="batchResults">
+          <h3 class="batch-results-title">Generated Songs</h3>
+          <div class="batch-grid" id="batchGrid"></div>
+        </div>
+
+        <div class="loading-card hidden" id="batchLoadingCard">
+          <div class="loading-anim">
+            <div class="music-bars">
+              <span></span><span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+          <h3 id="batchLoadingMsg">Generating songs...</h3>
+          <p class="loading-sub" id="batchLoadingSub">Creating original lyrics for each song</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── LIBRARY TAB ── -->
+    <section class="tab-panel hidden" id="tab-library">
+      <div class="library-panel">
+        <div class="library-header">
+          <h2 class="panel-title">My Song Library</h2>
+          <div class="library-actions">
+            <input type="text" id="librarySearch" class="form-input" placeholder="Search songs..." />
+            <button class="btn btn-danger-outline btn-sm" id="clearLibraryBtn">Clear All</button>
+          </div>
+        </div>
+        <div class="library-empty hidden" id="libraryEmpty">
+          <div class="placeholder-icon">📚</div>
+          <h3>No songs saved yet</h3>
+          <p>Generate songs and click 💾 to save them to your library.</p>
+        </div>
+        <div class="library-grid" id="libraryGrid"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Toast notification -->
+  <div class="toast hidden" id="toast"></div>
+
+  <!-- Song detail modal -->
+  <div class="modal-overlay hidden" id="modalOverlay">
+    <div class="modal glass-card" id="modal">
+      <button class="modal-close" id="modalClose">✕</button>
+      <div class="modal-content" id="modalContent"></div>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>

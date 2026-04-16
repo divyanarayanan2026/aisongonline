@@ -1,0 +1,10 @@
+node_modules/
+.env
+*.log
+.DS_Store
+Thumbs.db
+uploads/
+*.bat
+setup.ps1
+SETUP.md
+Somewhere Between Words.txt

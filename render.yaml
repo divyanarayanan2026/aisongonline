@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: aisongonline
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: REPLICATE_API_KEY
+        sync: false
+      - key: PORT
+        value: 10000
