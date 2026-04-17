@@ -117,6 +117,7 @@ const storage = multer.diskStorage({
   filename: (req, file, cb) => cb(null, `voice_${uuidv4()}${path.extname(file.originalname)}`)
 });
 const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
+const uploadLarge = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } }); // 50 MB for song converter
 
 // ─── Languages ───────────────────────────────────────────────────────────────
 const LANGUAGES = [
@@ -163,11 +164,49 @@ const LANGUAGES = [
   { code: 'si', name: 'Sinhala', nativeName: 'සිංහල' },
   { code: 'ne', name: 'Nepali', nativeName: 'नेपाली' },
   { code: 'my', name: 'Burmese', nativeName: 'မြန်မာဘာသာ' },
-  { code: 'km', name: 'Khmer', nativeName: 'ភាសាខ្មែរ' }
+  { code: 'km', name: 'Khmer', nativeName: 'ភាសាខ្មែរ' },
+  { code: 'lo', name: 'Lao', nativeName: 'ພາສາລາວ' },
+  { code: 'mn', name: 'Mongolian', nativeName: 'Монгол' },
+  { code: 'ka', name: 'Georgian', nativeName: 'ქართული' },
+  { code: 'am', name: 'Amharic', nativeName: 'አማርኛ' },
+  { code: 'ha', name: 'Hausa', nativeName: 'Hausa' },
+  { code: 'yo', name: 'Yoruba', nativeName: 'Yorùbá' },
+  { code: 'ig', name: 'Igbo', nativeName: 'Igbo' },
+  { code: 'zu', name: 'Zulu', nativeName: 'isiZulu' },
+  { code: 'af', name: 'Afrikaans', nativeName: 'Afrikaans' },
+  { code: 'sq', name: 'Albanian', nativeName: 'Shqip' },
+  { code: 'hy', name: 'Armenian', nativeName: 'Հայերեն' },
+  { code: 'az', name: 'Azerbaijani', nativeName: 'Azərbaycan' },
+  { code: 'be', name: 'Belarusian', nativeName: 'Беларуская' },
+  { code: 'bg', name: 'Bulgarian', nativeName: 'Български' },
+  { code: 'hr', name: 'Croatian', nativeName: 'Hrvatski' },
+  { code: 'sk', name: 'Slovak', nativeName: 'Slovenčina' },
+  { code: 'sl', name: 'Slovenian', nativeName: 'Slovenščina' },
+  { code: 'sr', name: 'Serbian', nativeName: 'Српски' },
+  { code: 'lt', name: 'Lithuanian', nativeName: 'Lietuvių' },
+  { code: 'lv', name: 'Latvian', nativeName: 'Latviešu' },
+  { code: 'et', name: 'Estonian', nativeName: 'Eesti' },
+  { code: 'tl', name: 'Filipino/Tagalog', nativeName: 'Filipino' },
+  { code: 'jv', name: 'Javanese', nativeName: 'Basa Jawa' },
+  { code: 'su', name: 'Sundanese', nativeName: 'Basa Sunda' },
+  { code: 'ceb', name: 'Cebuano', nativeName: 'Cebuano' },
+  { code: 'mg', name: 'Malagasy', nativeName: 'Malagasy' },
+  { code: 'cy', name: 'Welsh', nativeName: 'Cymraeg' },
+  { code: 'ga', name: 'Irish', nativeName: 'Gaeilge' },
+  { code: 'eu', name: 'Basque', nativeName: 'Euskara' },
+  { code: 'ca', name: 'Catalan', nativeName: 'Català' },
+  { code: 'gl', name: 'Galician', nativeName: 'Galego' },
+  { code: 'la', name: 'Latin', nativeName: 'Latina' },
 ];
 
-const GENRES = ['Pop', 'R&B', 'Classical', 'Folk', 'Hip-Hop', 'Rock', 'Jazz', 'Electronic', 'Devotional/Spiritual', 'Indie', 'Soul', 'Country', 'Reggae', 'Latin'];
-const MOODS = ['Happy', 'Romantic', 'Sad', 'Empowering', 'Nostalgic', 'Peaceful', 'Energetic', 'Spiritual', 'Melancholic', 'Playful', 'Longing', 'Hopeful'];
+const GENRES = [
+  'Pop', 'R&B', 'Classical', 'Folk', 'Hip-Hop', 'Rock', 'Jazz', 'Electronic',
+  'Devotional/Spiritual', 'Indie', 'Soul', 'Country', 'Reggae', 'Latin',
+  'Afrobeats', 'K-Pop', 'J-Pop', 'Bollywood', 'Lo-Fi', 'Trap', 'Gospel',
+  'Metal', 'Blues', 'Bossa Nova', 'Salsa', 'Cumbia', 'Dancehall', 'Punk',
+  'Ambient', 'Funk', 'Disco', 'EDM', 'Bhangra', 'Carnatic', 'Hindustani',
+];
+const MOODS = ['Happy', 'Romantic', 'Sad', 'Empowering', 'Nostalgic', 'Peaceful', 'Energetic', 'Spiritual', 'Melancholic', 'Playful', 'Longing', 'Hopeful', 'Angry', 'Dreamy', 'Fierce', 'Chill'];
 
 // ─── GET: Meta ────────────────────────────────────────────────────────────────
 app.get('/api/languages', (req, res) => res.json(LANGUAGES));
@@ -517,6 +556,118 @@ app.post('/api/tts-cloned', async (req, res) => {
     res.status(500).json({ success: false, error: e.message });
   }
 });
+
+// ─── ElevenLabs Speech-to-Speech: "Sing in My Voice" ────────────────────────
+// Converts a Bark-generated audio URL to the user's cloned voice
+app.post('/api/convert-singing', async (req, res) => {
+  const { audioUrl, voiceId } = req.body;
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  if (!apiKey) return res.status(400).json({ success: false, error: 'ElevenLabs API key not configured' });
+  if (!audioUrl || !voiceId) return res.status(400).json({ success: false, error: 'audioUrl and voiceId are required' });
+
+  try {
+    const { default: fetch } = await import('node-fetch');
+    const { default: FormData } = await import('form-data');
+
+    // Download the Bark source audio
+    const audioRes = await fetch(audioUrl);
+    if (!audioRes.ok) throw new Error('Failed to download source audio from Replicate');
+    const audioBuffer = await audioRes.buffer();
+
+    const form = new FormData();
+    form.append('audio', audioBuffer, { filename: 'singing.wav', contentType: 'audio/wav' });
+    form.append('model_id', 'eleven_multilingual_sts_v2');
+    form.append('voice_settings', JSON.stringify({ stability: 0.5, similarity_boost: 0.85 }));
+
+    const r = await fetch(`https://api.elevenlabs.io/v1/speech-to-speech/${voiceId}`, {
+      method: 'POST',
+      headers: { 'xi-api-key': apiKey, ...form.getHeaders() },
+      body: form,
+    });
+    if (!r.ok) {
+      const errData = await r.json().catch(() => ({}));
+      throw new Error(errData.detail?.message || errData.detail || `ElevenLabs STS error: ${r.statusText}`);
+    }
+    const buf = await r.arrayBuffer();
+    res.set('Content-Type', 'audio/mpeg');
+    res.send(Buffer.from(buf));
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ─── Song Voice Converter: Upload song + voice → ElevenLabs STS ──────────────
+app.post('/api/song-voice-converter',
+  uploadLarge.fields([{ name: 'song', maxCount: 1 }, { name: 'voiceFile', maxCount: 1 }]),
+  async (req, res) => {
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    if (!apiKey) return res.status(400).json({ success: false, error: 'ElevenLabs API key not configured' });
+
+    const songFile = req.files?.song?.[0];
+    if (!songFile) return res.status(400).json({ success: false, error: 'No song file uploaded' });
+
+    let voiceId = req.body.voiceId || null;
+
+    try {
+      const { default: fetch } = await import('node-fetch');
+      const { default: FormData } = await import('form-data');
+
+      // If a new voice file was uploaded, clone it first
+      if (!voiceId && req.files?.voiceFile?.[0]) {
+        const vf = req.files.voiceFile[0];
+        const cloneForm = new FormData();
+        cloneForm.append('name', `SVC Voice ${Date.now()}`);
+        cloneForm.append('description', 'Song Voice Converter — auto cloned');
+        cloneForm.append('files', fs.createReadStream(vf.path), {
+          filename: vf.originalname || 'voice.mp3',
+          contentType: vf.mimetype,
+        });
+        const cloneRes = await fetch('https://api.elevenlabs.io/v1/voices/add', {
+          method: 'POST',
+          headers: { 'xi-api-key': apiKey, ...cloneForm.getHeaders() },
+          body: cloneForm,
+        });
+        const cloneData = await cloneRes.json();
+        fs.unlink(vf.path, () => {});
+        if (!cloneRes.ok) throw new Error(cloneData.detail?.message || cloneData.detail || 'Voice cloning failed');
+        voiceId = cloneData.voice_id;
+      }
+
+      if (!voiceId) return res.status(400).json({ success: false, error: 'Provide an existing voiceId or upload a new voice file' });
+
+      // Convert song through ElevenLabs Speech-to-Speech
+      const stsForm = new FormData();
+      stsForm.append('audio', fs.createReadStream(songFile.path), {
+        filename: songFile.originalname || 'song.mp3',
+        contentType: songFile.mimetype,
+      });
+      stsForm.append('model_id', 'eleven_multilingual_sts_v2');
+      stsForm.append('voice_settings', JSON.stringify({ stability: 0.5, similarity_boost: 0.85 }));
+
+      const stsRes = await fetch(`https://api.elevenlabs.io/v1/speech-to-speech/${voiceId}`, {
+        method: 'POST',
+        headers: { 'xi-api-key': apiKey, ...stsForm.getHeaders() },
+        body: stsForm,
+      });
+
+      fs.unlink(songFile.path, () => {});
+
+      if (!stsRes.ok) {
+        const errData = await stsRes.json().catch(() => ({}));
+        throw new Error(errData.detail?.message || errData.detail || `ElevenLabs STS error: ${stsRes.statusText}`);
+      }
+
+      const buf = await stsRes.arrayBuffer();
+      res.set('Content-Type', 'audio/mpeg');
+      res.set('Content-Disposition', 'attachment; filename="converted-voice.mp3"');
+      res.send(Buffer.from(buf));
+    } catch (e) {
+      if (req.files?.song?.[0]?.path) fs.unlink(req.files.song[0].path, () => {});
+      if (req.files?.voiceFile?.[0]?.path) fs.unlink(req.files.voiceFile[0].path, () => {});
+      res.status(500).json({ success: false, error: e.message });
+    }
+  }
+);
 
 // ─── Proxy audio for download ─────────────────────────────────────────────────
 app.get('/api/proxy-audio', async (req, res) => {

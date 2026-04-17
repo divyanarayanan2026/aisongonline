@@ -1028,3 +1028,62 @@ body::after {
   display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;
   font-size: 0.78rem; color: var(--text-dim);
 }
+
+/* ── AI Singing: Male/Female gender toggle ────────────────────────────────── */
+.bark-voice-row { flex-direction: column; align-items: flex-start; gap: 10px; }
+.bark-gender-btns { display: flex; gap: 6px; }
+.bark-gender-btn {
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 99px; padding: 5px 16px; font-size: 0.82rem; font-weight: 600;
+  cursor: pointer; color: var(--text-muted); transition: var(--transition);
+}
+.bark-gender-btn:hover { border-color: var(--teal); color: var(--teal); background: rgba(34,211,238,0.08); }
+.bark-gender-btn.active { background: rgba(34,211,238,0.18); border-color: var(--teal); color: var(--teal); }
+.bark-style-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* ── Singing "Use My Voice" toggle ───────────────────────────────────────── */
+.singing-voice-row {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 14px; padding: 10px 12px;
+  background: rgba(196,181,253,0.05); border: 1px solid rgba(196,181,253,0.12);
+  border-radius: var(--radius-xs);
+}
+.toggle-label { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
+.toggle-label input[type="checkbox"] { display: none; }
+.toggle-slider {
+  width: 36px; height: 20px; background: rgba(255,255,255,0.12); border-radius: 99px;
+  position: relative; transition: background 0.2s; flex-shrink: 0;
+}
+.toggle-slider::after {
+  content: ''; position: absolute; top: 3px; left: 3px;
+  width: 14px; height: 14px; border-radius: 50%; background: #fff;
+  transition: transform 0.2s;
+}
+.toggle-label input:checked + .toggle-slider { background: var(--primary-dark); }
+.toggle-label input:checked + .toggle-slider::after { transform: translateX(16px); }
+.toggle-text { font-size: 0.85rem; color: var(--text-muted); font-weight: 500; }
+.singing-voice-hint { font-size: 0.78rem; color: var(--text-dim); flex: 1; min-width: 200px; }
+
+/* btn-large for singing */
+.btn-singing.btn-large { width: 100%; padding: 12px; font-size: 0.95rem; margin-bottom: 12px; }
+
+/* ── Song Voice Converter section ─────────────────────────────────────────── */
+.svc-section {
+  margin-top: 32px; padding: 24px;
+  background: rgba(251,191,36,0.03); border: 1px solid rgba(251,191,36,0.12);
+  border-radius: var(--radius-xs);
+}
+.svc-voice-options { display: flex; flex-direction: column; gap: 12px; margin-bottom: 4px; }
+.svc-radio-option {
+  display: flex; align-items: center; gap: 10px; cursor: pointer;
+  font-size: 0.88rem; color: var(--text-muted);
+}
+.svc-radio-option input[type="radio"] { accent-color: var(--primary); width: 16px; height: 16px; }
+.svc-voice-status { font-size: 0.78rem; color: var(--text-dim); margin-left: 4px; }
+.svc-voice-status.has-clone { color: #4ade80; }
+
+/* ── Responsive tweaks ────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .singing-voice-row { flex-direction: column; align-items: flex-start; }
+  .bark-gender-btns, .bark-style-btns { flex-wrap: wrap; }
+}

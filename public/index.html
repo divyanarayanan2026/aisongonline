@@ -250,23 +250,44 @@
             <div class="ai-singing-panel">
               <div class="ai-singing-header">
                 <div class="ai-singing-title">🎵 AI Singing <span class="badge-powered">Bark · Replicate</span></div>
-                <button class="btn btn-singing" id="generateSingingBtn">Generate Singing</button>
               </div>
-              <p class="ai-singing-desc">Turn lyrics into actual sung audio using Bark AI — then download as audio file. Requires a free <a href="https://replicate.com" target="_blank" class="link-accent">Replicate API key</a>.</p>
+              <p class="ai-singing-desc">Generate real sung audio from your lyrics — choose a voice type and hit Generate. Powered by Bark AI. Requires a free <a href="https://replicate.com" target="_blank" class="link-accent">Replicate account</a>.</p>
+
+              <!-- Voice type picker -->
               <div class="bark-voice-row">
-                <span class="form-label-sm">Voice Style:</span>
-                <div class="bark-voice-grid" id="barkVoiceGrid">
-                  <button class="bvbtn active" data-voice="en_speaker_6">Male 1</button>
-                  <button class="bvbtn" data-voice="en_speaker_3">Male 2</button>
-                  <button class="bvbtn" data-voice="en_speaker_9">Female 1</button>
-                  <button class="bvbtn" data-voice="en_speaker_0">Female 2</button>
-                  <button class="bvbtn" data-voice="en_speaker_4">Warm</button>
-                  <button class="bvbtn" data-voice="en_speaker_7">Deep</button>
+                <div class="bark-gender-btns">
+                  <button class="bark-gender-btn active" data-gender="male">♂ Male</button>
+                  <button class="bark-gender-btn" data-gender="female">♀ Female</button>
+                </div>
+                <div class="bark-style-btns" id="barkStyleBtns">
+                  <button class="bvbtn active" data-voice="en_speaker_6" data-gender="male">Warm</button>
+                  <button class="bvbtn" data-voice="en_speaker_1" data-gender="male">Deep</button>
+                  <button class="bvbtn" data-voice="en_speaker_5" data-gender="male">Clear</button>
+                  <button class="bvbtn" data-voice="en_speaker_0" data-gender="male">Smooth</button>
+                  <button class="bvbtn hidden" data-voice="en_speaker_9" data-gender="female">Warm</button>
+                  <button class="bvbtn hidden" data-voice="en_speaker_3" data-gender="female">Bright</button>
+                  <button class="bvbtn hidden" data-voice="en_speaker_4" data-gender="female">Soft</button>
+                  <button class="bvbtn hidden" data-voice="en_speaker_8" data-gender="female">Expressive</button>
                 </div>
               </div>
+
+              <!-- Use cloned voice toggle -->
+              <div class="singing-voice-row" id="singingVoiceRow">
+                <label class="toggle-label">
+                  <input type="checkbox" id="useMyVoiceToggle" />
+                  <span class="toggle-slider"></span>
+                  <span class="toggle-text">🎤 Sing in My Voice (uses cloned voice)</span>
+                </label>
+                <span class="singing-voice-hint" id="singingVoiceHint"></span>
+              </div>
+
+              <button class="btn btn-singing btn-large" id="generateSingingBtn">
+                <span class="btn-icon">🎵</span> Generate Singing
+              </button>
+
               <div class="singing-loading hidden" id="singingLoading">
                 <div class="music-bars-sm"><span></span><span></span><span></span><span></span></div>
-                <span>Generating singing audio (30–90 sec)…</span>
+                <span id="singingLoadingMsg">Generating singing audio (30–90 sec)…</span>
               </div>
               <div class="singing-result hidden" id="singingResult">
                 <audio controls id="singingAudio" class="singing-audio-player"></audio>
@@ -431,6 +452,63 @@
             </div>
             <audio controls id="clonedAudio" class="singing-audio-player hidden"></audio>
           </div>
+
+          <!-- ── Song Voice Converter ─────────────────────────────────────── -->
+          <div class="svc-section">
+            <div class="voice-clone-header" style="margin-top:0;">
+              <h3 class="voice-clone-title">🎵 Song Voice Converter <span class="badge-powered">ElevenLabs STS</span></h3>
+              <p class="voice-clone-desc">Upload any song and convert its vocals to sound like a specific voice — yours, or a new voice sample you upload.</p>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Upload Song / Audio File</label>
+              <label class="upload-drop-zone" id="svcSongZone">
+                <input type="file" id="svcSongInput" accept="audio/*" style="display:none" />
+                <span class="upload-icon">🎵</span>
+                <span class="upload-label" id="svcSongLabel">Click to choose a song (MP3, WAV, M4A, up to 50 MB)</span>
+              </label>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Voice to Convert Into</label>
+              <div class="svc-voice-options">
+                <label class="svc-radio-option">
+                  <input type="radio" name="svcVoiceSource" value="existing" id="svcUseExisting" checked />
+                  <span>Use my cloned voice</span>
+                  <span class="svc-voice-status" id="svcExistingStatus">No clone yet — clone your voice above first</span>
+                </label>
+                <label class="svc-radio-option">
+                  <input type="radio" name="svcVoiceSource" value="new" id="svcUploadNew" />
+                  <span>Upload a new voice sample</span>
+                </label>
+              </div>
+              <div class="hidden" id="svcNewVoiceWrap">
+                <label class="upload-drop-zone" id="svcVoiceZone" style="margin-top:12px;">
+                  <input type="file" id="svcVoiceInput" accept="audio/*" style="display:none" />
+                  <span class="upload-icon">🎤</span>
+                  <span class="upload-label" id="svcVoiceLabel">Upload voice sample (30+ seconds, no background noise)</span>
+                </label>
+              </div>
+            </div>
+
+            <button class="btn btn-primary" id="svcConvertBtn" disabled>
+              <span>🔄</span> Convert Vocals to This Voice
+            </button>
+
+            <div class="singing-loading hidden" id="svcLoading">
+              <div class="music-bars-sm"><span></span><span></span><span></span><span></span></div>
+              <span>Converting vocals… this may take 30–90 seconds</span>
+            </div>
+
+            <div class="singing-result hidden" id="svcResult">
+              <audio controls id="svcAudio" class="singing-audio-player"></audio>
+              <div class="singing-dl-row">
+                <button class="btn btn-teal btn-sm" id="svcDownloadBtn">⬇ Download Converted Audio</button>
+                <span class="singing-note">Powered by ElevenLabs Speech-to-Speech · converted-voice.mp3</span>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </section>

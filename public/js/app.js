@@ -40,6 +40,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initModal();
   initAISinging();
   initVoiceCloning();
+  initSongVoiceConverter();
   animateHeroWave();
   populateTranslateSelects();
 });
@@ -1025,20 +1026,68 @@ function closeModal() {
 }
 
 // ── AI Singing (Replicate Bark) ───────────────────────────────────────────────
-const singingState = { selectedVoice: 'en_speaker_6', audioUrl: null };
+const singingState = { selectedVoice: 'en_speaker_6', currentGender: 'male', audioUrl: null, convertedBlob: null };
 
 function initAISinging() {
-  // Bark voice buttons
+  // Gender toggle
+  document.querySelectorAll('.bark-gender-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.bark-gender-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      singingState.currentGender = btn.dataset.gender;
+      // Show/hide style buttons for this gender
+      document.querySelectorAll('.bvbtn').forEach(b => {
+        if (b.dataset.gender === singingState.currentGender) {
+          b.classList.remove('hidden');
+        } else {
+          b.classList.add('hidden');
+          b.classList.remove('active');
+        }
+      });
+      // Auto-select first visible style
+      const firstVisible = document.querySelector(`.bvbtn[data-gender="${singingState.currentGender}"]`);
+      if (firstVisible) {
+        firstVisible.classList.add('active');
+        singingState.selectedVoice = firstVisible.dataset.voice;
+      }
+    });
+  });
+
+  // Style buttons
   document.querySelectorAll('.bvbtn').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.bvbtn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll(`.bvbtn[data-gender="${singingState.currentGender}"]`).forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       singingState.selectedVoice = btn.dataset.voice;
     });
   });
 
+  // "Use My Voice" toggle
+  $('useMyVoiceToggle')?.addEventListener('change', updateSingingVoiceHint);
+
   $('generateSingingBtn')?.addEventListener('click', handleGenerateSinging);
   $('downloadSingingBtn')?.addEventListener('click', downloadSinging);
+
+  updateSingingVoiceHint();
+}
+
+function updateSingingVoiceHint() {
+  const hint = $('singingVoiceHint');
+  const toggle = $('useMyVoiceToggle');
+  if (!hint || !toggle) return;
+  if (toggle.checked) {
+    if (cloneState.voiceId) {
+      hint.textContent = '✓ Will convert to your cloned voice after Bark generates';
+      hint.style.color = '#4ade80';
+    } else {
+      hint.textContent = '⚠ No voice cloned yet — go to My Voice tab to clone first';
+      hint.style.color = '#f59e0b';
+      toggle.checked = false;
+    }
+  } else {
+    hint.textContent = cloneState.voiceId ? 'Toggle on to sing in your cloned voice' : 'Clone your voice in the My Voice tab to enable';
+    hint.style.color = '';
+  }
 }
 
 async function handleGenerateSinging() {
@@ -1046,14 +1095,18 @@ async function handleGenerateSinging() {
 
   const btn = $('generateSingingBtn');
   const loading = $('singingLoading');
+  const loadingMsg = $('singingLoadingMsg');
   const result = $('singingResult');
+  const useMyVoice = $('useMyVoiceToggle')?.checked && cloneState.voiceId;
 
   btn.disabled = true;
-  btn.textContent = 'Generating…';
+  btn.innerHTML = '<span class="btn-icon">⏳</span> Generating…';
   loading.classList.remove('hidden');
   result.classList.add('hidden');
 
   try {
+    // Step 1: Bark generates the raw singing
+    if (loadingMsg) loadingMsg.textContent = 'Generating singing audio with Bark AI (30–90 sec)…';
     const res = await fetch('/api/generate-singing', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1061,30 +1114,206 @@ async function handleGenerateSinging() {
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.error);
-
     singingState.audioUrl = data.audioUrl;
-    const audio = $('singingAudio');
-    audio.src = data.audioUrl;
-    $('singingNote').textContent = 'Powered by Bark AI · suno-ai/bark on Replicate';
+    singingState.convertedBlob = null;
+
+    // Step 2 (optional): Convert to cloned voice via ElevenLabs STS
+    if (useMyVoice) {
+      if (loadingMsg) loadingMsg.textContent = 'Converting to your voice (ElevenLabs STS)…';
+      const stsRes = await fetch('/api/convert-singing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ audioUrl: singingState.audioUrl, voiceId: cloneState.voiceId }),
+      });
+      if (!stsRes.ok) {
+        const errData = await stsRes.json().catch(() => ({}));
+        throw new Error(errData.error || 'Voice conversion failed');
+      }
+      const blob = await stsRes.blob();
+      singingState.convertedBlob = blob;
+      const url = URL.createObjectURL(blob);
+      $('singingAudio').src = url;
+      $('singingNote').textContent = 'Sang in your cloned voice · ElevenLabs STS + Bark AI';
+    } else {
+      $('singingAudio').src = data.audioUrl;
+      $('singingNote').textContent = 'Powered by Bark AI · suno-ai/bark on Replicate';
+    }
+
     result.classList.remove('hidden');
-    showToast('Singing audio ready!', 'success');
+    showToast(useMyVoice ? 'Singing ready in your voice!' : 'Singing audio ready!', 'success');
   } catch (e) {
     showToast('Singing failed: ' + e.message, 'error');
   } finally {
     loading.classList.add('hidden');
     btn.disabled = false;
-    btn.textContent = 'Generate Singing';
+    btn.innerHTML = '<span class="btn-icon">🎵</span> Generate Singing';
   }
 }
 
 function downloadSinging() {
-  if (!singingState.audioUrl) return;
   const title = (state.currentSong?.title || 'song').replace(/[^a-z0-9]/gi, '-').toLowerCase();
-  const a = document.createElement('a');
-  // Use proxy to force download with correct filename
-  a.href = `/api/proxy-audio?url=${encodeURIComponent(singingState.audioUrl)}&filename=${title}-singing.wav`;
-  a.download = `${title}-singing.wav`;
-  a.click();
+  if (singingState.convertedBlob) {
+    // Converted voice blob — download directly
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(singingState.convertedBlob);
+    a.download = `${title}-my-voice.mp3`;
+    a.click();
+  } else if (singingState.audioUrl) {
+    // Original Bark output — proxy download
+    const a = document.createElement('a');
+    a.href = `/api/proxy-audio?url=${encodeURIComponent(singingState.audioUrl)}&filename=${title}-singing.wav`;
+    a.download = `${title}-singing.wav`;
+    a.click();
+  }
+}
+
+// ── Song Voice Converter ──────────────────────────────────────────────────────
+const svcState = { songFile: null, voiceFile: null };
+
+function initSongVoiceConverter() {
+  const songZone = $('svcSongZone');
+  const songInput = $('svcSongInput');
+  const voiceZone = $('svcVoiceZone');
+  const voiceInput = $('svcVoiceInput');
+  const convertBtn = $('svcConvertBtn');
+  const downloadBtn = $('svcDownloadBtn');
+
+  // Song file pick
+  if (songInput) {
+    songInput.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      svcState.songFile = file;
+      $('svcSongLabel').textContent = `✓ ${file.name} (${(file.size/1024/1024).toFixed(1)} MB)`;
+      if (songZone) songZone.classList.add('has-file');
+      updateSvcConvertBtn();
+    });
+  }
+  if (songZone) {
+    songZone.addEventListener('dragover', e => { e.preventDefault(); songZone.style.borderColor = 'var(--accent)'; });
+    songZone.addEventListener('dragleave', () => { songZone.style.borderColor = ''; });
+    songZone.addEventListener('drop', e => {
+      e.preventDefault(); songZone.style.borderColor = '';
+      const file = e.dataTransfer.files[0];
+      if (file && file.type.startsWith('audio/')) {
+        svcState.songFile = file;
+        $('svcSongLabel').textContent = `✓ ${file.name} (${(file.size/1024/1024).toFixed(1)} MB)`;
+        songZone.classList.add('has-file');
+        updateSvcConvertBtn();
+      } else showToast('Please drop an audio file', 'error');
+    });
+  }
+
+  // Voice file pick
+  if (voiceInput) {
+    voiceInput.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      svcState.voiceFile = file;
+      $('svcVoiceLabel').textContent = `✓ ${file.name} (${(file.size/1024/1024).toFixed(1)} MB)`;
+      if (voiceZone) voiceZone.classList.add('has-file');
+      updateSvcConvertBtn();
+    });
+  }
+  if (voiceZone) {
+    voiceZone.addEventListener('dragover', e => { e.preventDefault(); voiceZone.style.borderColor = 'var(--accent)'; });
+    voiceZone.addEventListener('dragleave', () => { voiceZone.style.borderColor = ''; });
+    voiceZone.addEventListener('drop', e => {
+      e.preventDefault(); voiceZone.style.borderColor = '';
+      const file = e.dataTransfer.files[0];
+      if (file && file.type.startsWith('audio/')) {
+        svcState.voiceFile = file;
+        $('svcVoiceLabel').textContent = `✓ ${file.name} (${(file.size/1024/1024).toFixed(1)} MB)`;
+        voiceZone.classList.add('has-file');
+        updateSvcConvertBtn();
+      }
+    });
+  }
+
+  // Radio toggle for voice source
+  document.querySelectorAll('input[name="svcVoiceSource"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      const newWrap = $('svcNewVoiceWrap');
+      const isNew = $('svcUploadNew')?.checked;
+      newWrap?.classList.toggle('hidden', !isNew);
+      updateSvcConvertBtn();
+      updateSvcExistingStatus();
+    });
+  });
+
+  convertBtn?.addEventListener('click', handleSvcConvert);
+  downloadBtn?.addEventListener('click', () => {
+    const audio = $('svcAudio');
+    if (!audio?.src) return;
+    const a = document.createElement('a');
+    a.href = audio.src;
+    a.download = 'converted-voice.mp3';
+    a.click();
+  });
+
+  updateSvcExistingStatus();
+}
+
+function updateSvcExistingStatus() {
+  const statusEl = $('svcExistingStatus');
+  if (!statusEl) return;
+  if (cloneState.voiceId) {
+    statusEl.textContent = '✓ Cloned voice ready';
+    statusEl.classList.add('has-clone');
+  } else {
+    statusEl.textContent = 'No clone yet — record & clone your voice above first';
+    statusEl.classList.remove('has-clone');
+  }
+}
+
+function updateSvcConvertBtn() {
+  const btn = $('svcConvertBtn');
+  if (!btn) return;
+  const isNewVoice = $('svcUploadNew')?.checked;
+  const hasVoice = isNewVoice ? !!svcState.voiceFile : !!cloneState.voiceId;
+  btn.disabled = !svcState.songFile || !hasVoice;
+}
+
+async function handleSvcConvert() {
+  const isNewVoice = $('svcUploadNew')?.checked;
+  const voiceId = isNewVoice ? null : cloneState.voiceId;
+
+  if (!svcState.songFile) { showToast('Upload a song first', 'error'); return; }
+  if (isNewVoice && !svcState.voiceFile) { showToast('Upload a voice sample first', 'error'); return; }
+  if (!isNewVoice && !voiceId) { showToast('Clone your voice first in the My Voice tab', 'error'); return; }
+
+  const btn = $('svcConvertBtn');
+  const loading = $('svcLoading');
+  const result = $('svcResult');
+
+  btn.disabled = true;
+  btn.innerHTML = '<span>⏳</span> Converting…';
+  loading.classList.remove('hidden');
+  result.classList.add('hidden');
+
+  try {
+    const form = new FormData();
+    form.append('song', svcState.songFile);
+    if (isNewVoice && svcState.voiceFile) form.append('voiceFile', svcState.voiceFile);
+    if (voiceId) form.append('voiceId', voiceId);
+
+    const res = await fetch('/api/song-voice-converter', { method: 'POST', body: form });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'Conversion failed');
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    $('svcAudio').src = url;
+    result.classList.remove('hidden');
+    showToast('Voice conversion complete!', 'success');
+  } catch (e) {
+    showToast('Conversion failed: ' + e.message, 'error');
+  } finally {
+    loading.classList.add('hidden');
+    btn.disabled = false;
+    btn.innerHTML = '<span>🔄</span> Convert Vocals to This Voice';
+  }
 }
 
 // ── Voice Cloning (ElevenLabs) ────────────────────────────────────────────────
@@ -1154,6 +1383,10 @@ function showCloneResult(fromSaved) {
   $('cloneResult')?.classList.remove('hidden');
   const statusText = $('cloneStatusText');
   if (statusText) statusText.textContent = fromSaved ? 'Cloned voice loaded from previous session' : 'Voice cloned successfully!';
+  // Update dependent UI
+  updateSvcExistingStatus();
+  updateSvcConvertBtn();
+  updateSingingVoiceHint();
 }
 
 async function testClonedVoice() {
@@ -1191,6 +1424,9 @@ function deleteClone() {
   const statusText = $('cloneStatusText');
   if (statusText) statusText.textContent = 'Clone removed. Record your voice again to create a new one.';
   showToast('Clone removed', '');
+  updateSvcExistingStatus();
+  updateSvcConvertBtn();
+  updateSingingVoiceHint();
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
