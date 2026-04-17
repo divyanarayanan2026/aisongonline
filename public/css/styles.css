@@ -545,20 +545,28 @@ button, input, select, textarea {
   box-shadow: var(--glow-card);
 }
 
-/* glass-card kept for backward compat — now solid */
+/* glass-card — solid dark card with padding */
 .glass-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--r-card);
+  padding: 28px;
 }
 
 .panel-title {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 700;
   color: var(--text-primary);
-  margin-bottom: 20px;
-  padding-bottom: 12px;
+  margin-bottom: 8px;
+  padding-bottom: 14px;
   border-bottom: 1px solid var(--border);
+}
+
+.panel-desc {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  line-height: 1.65;
+  margin-bottom: 24px;
 }
 
 /* ============================================================
@@ -1115,15 +1123,9 @@ button, input, select, textarea {
 }
 
 .voice-recorder-main {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--r-card);
-  padding: 28px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 18px;
-  text-align: center;
+  gap: 20px;
 }
 
 .visualizer-wrap {
@@ -1691,14 +1693,9 @@ button, input, select, textarea {
 }
 
 .batch-controls {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--r-card);
-  padding: 20px;
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 20px;
-  flex-wrap: wrap;
 }
 
 .count-control {
