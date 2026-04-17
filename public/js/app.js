@@ -689,13 +689,19 @@ async function toggleRecording() {
       updateCloneBtn();
       cancelAnimationFrame(state.animFrameId);
       stopCanvas();
+      // Hide canvas, restore placeholder
+      $('voiceCanvas').style.display = 'none';
+      $('visualizerPlaceholder')?.classList.remove('hidden');
     };
 
     state.mediaRecorder.start(100);
     $('recordBtn').classList.add('recording');
     $('recordBtnText').textContent = 'Recording...';
     $('stopRecordBtn').disabled = false;
-    $('recordStatus').textContent = 'Recording... speak clearly';
+    $('recordStatus').textContent = '🔴 Recording — speak clearly and at normal volume';
+    // Show canvas, hide placeholder
+    $('voiceCanvas').style.display = 'block';
+    $('visualizerPlaceholder')?.classList.add('hidden');
     visualizeVoice(stream);
   } catch (e) {
     showToast('Microphone access denied or unavailable', 'error');
@@ -741,10 +747,13 @@ function clearRecording() {
   $('playRecordingBtn').disabled = true;
   $('clearVoiceBtn').disabled = true;
   $('recordBtnText').textContent = 'Start Recording';
-  $('recordStatus').textContent = 'Ready to record';
+  $('recordStatus').textContent = '';
   $('voiceCardName').textContent = 'No recording yet';
   $('voiceStatusMini').innerHTML = `<span class="dot inactive"></span><span>No voice recorded — using browser voice</span>`;
   clearCanvas();
+  // Restore placeholder
+  $('voiceCanvas').style.display = 'none';
+  $('visualizerPlaceholder')?.classList.remove('hidden');
 }
 
 function testVoice() {

@@ -1128,13 +1128,27 @@ button, input, select, textarea {
 
 .visualizer-wrap {
   width: 100%;
-  max-width: 320px;
-  height: 80px;
-  background: rgba(0,0,0,0.2);
   border-radius: var(--r-sm);
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 1px dashed rgba(139, 92, 246, 0.25);
+  background: rgba(139, 92, 246, 0.04);
 }
+
+/* Placeholder shown before recording starts */
+.visualizer-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 20px;
+  font-size: 13.5px;
+  color: var(--text-muted);
+  min-height: 72px;
+}
+.viz-mic-icon { font-size: 20px; opacity: 0.6; }
+
+/* Canvas only shown while recording */
+#voiceCanvas { display: block; width: 100%; }
 
 .record-status {
   font-size: 13.5px;

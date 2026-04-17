@@ -282,8 +282,12 @@
 
         <div class="voice-recorder-main">
           <div class="visualizer-wrap">
-            <canvas id="voiceCanvas" width="500" height="120"></canvas>
-            <div class="record-status" id="recordStatus">Ready to record</div>
+            <div class="visualizer-placeholder" id="visualizerPlaceholder">
+              <span class="viz-mic-icon">🎤</span>
+              <span>Press <strong>Start Recording</strong> to see your voice waveform</span>
+            </div>
+            <canvas id="voiceCanvas" width="500" height="120" style="display:none"></canvas>
+            <div class="record-status" id="recordStatus"></div>
           </div>
 
           <div class="recorder-controls">
@@ -302,26 +306,15 @@
             </button>
           </div>
 
-          <div class="voice-settings">
-            <h3>Voice Synthesis Settings</h3>
-            <div class="form-group">
-              <label class="form-label">Pitch: <span id="pitchVal">1.0</span></label>
-              <input type="range" id="pitchSlider" min="0.5" max="2" step="0.1" value="1" class="range-slider" />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Rate: <span id="rateVal">0.9</span></label>
-              <input type="range" id="rateSlider" min="0.5" max="1.8" step="0.05" value="0.9" class="range-slider" />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Volume: <span id="volVal">0.9</span></label>
-              <input type="range" id="volSlider" min="0" max="1" step="0.05" value="0.9" class="range-slider" />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Browser Voice</label>
-              <select id="voiceSelectTTS" class="form-select"></select>
-            </div>
-            <button class="btn btn-outline" id="testVoiceBtn">🎧 Test Voice</button>
-          </div>
+          <!-- voice-settings removed (TTS no longer used) -->
+          <!-- Hidden inputs kept for JS compatibility -->
+          <input type="range" id="pitchSlider" style="display:none" />
+          <input type="range" id="rateSlider"  style="display:none" />
+          <input type="range" id="volSlider"   style="display:none" />
+          <select id="voiceSelectTTS" style="display:none"></select>
+          <span id="pitchVal" style="display:none"></span>
+          <span id="rateVal"  style="display:none"></span>
+          <span id="volVal"   style="display:none"></span>
 
           <div class="voice-card" id="voiceCard">
             <div class="voice-card-inner">
