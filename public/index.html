@@ -48,31 +48,38 @@
 
   <!-- ── Hero ──────────────────────────────────────────────────────────────── -->
   <section class="hero">
-    <div class="hero-content">
-      <h1 class="hero-title">
-        Your Voice.<br />
-        <em>Every Language.</em><br />
-        Infinite Songs.
-      </h1>
-      <p class="hero-subtitle">Record your voice, choose a language, and watch AI write and sing original songs just for you — in 44+ languages, any genre, unlimited times.</p>
-      <div class="hero-badges">
-        <span class="badge">44+ Languages</span>
-        <span class="badge">14 Genres</span>
-        <span class="badge">12 Moods</span>
-        <span class="badge">Voice Cloning</span>
+  <div class="hero-content">
+    <div class="hero-eyebrow">✦ AI-Powered Song Creation</div>
+    <h1 class="hero-title">
+      Make Original Songs<br>
+      <em>In Any Language</em>
+    </h1>
+    <p class="hero-subtitle">Write lyrics, generate AI singing, clone your voice — all in one studio. No music skills needed.</p>
+    <div class="hero-stats">
+      <div class="hero-stat"><span class="hero-stat-num">80+</span><span class="hero-stat-label">Languages</span></div>
+      <div class="hero-stat"><span class="hero-stat-num">35+</span><span class="hero-stat-label">Genres</span></div>
+      <div class="hero-stat"><span class="hero-stat-num">16</span><span class="hero-stat-label">Moods</span></div>
+      <div class="hero-stat"><span class="hero-stat-num">AI</span><span class="hero-stat-label">Voice Clone</span></div>
+    </div>
+    <div class="hero-cta-row">
+      <button class="btn btn-primary btn-hero" onclick="document.getElementById('generateBtn').scrollIntoView({behavior:'smooth'})">Start Creating Free →</button>
+      <span class="hero-cta-note">No credit card required</span>
+    </div>
+  </div>
+  <div class="hero-visual">
+    <div class="hero-card-demo">
+      <div class="hero-card-pill">🎵 Currently generating...</div>
+      <div class="hero-card-title">Uyire Uyire</div>
+      <div class="hero-card-tags"><span>Tamil</span><span>Romantic</span><span>Bollywood</span></div>
+      <div class="hero-card-wave">
+        <canvas id="heroWaveCanvas" width="300" height="60"></canvas>
+      </div>
+      <div class="hero-langs-wrap">
+        <span>தமிழ்</span><span>हिंदी</span><span>日本語</span><span>العربية</span><span>K-Pop</span><span>Afrobeats</span>
       </div>
     </div>
-    <div class="hero-visual">
-      <div class="waveform-display" id="heroWave">
-        <canvas id="heroWaveCanvas" width="320" height="80"></canvas>
-      </div>
-      <div class="floating-langs">
-        <span>தமிழ்</span><span>हिंदी</span><span>日本語</span>
-        <span>العربية</span><span>Español</span><span>한국어</span>
-        <span>Français</span><span>తెలుగు</span>
-      </div>
-    </div>
-  </section>
+  </div>
+</section>
 
   <!-- ── Main App ───────────────────────────────────────────────────────────── -->
   <main class="main-container">
