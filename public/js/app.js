@@ -7,8 +7,8 @@ const state = {
   genres: [],
   moods: [],
   selectedLanguage: null,
-  selectedGenre: null,
-  selectedMood: null,
+  selectedGenres: [],   // multi-select
+  selectedMoods: [],    // multi-select
   currentSong: null,
   voiceRecording: null,
   voiceSettings: { pitch: 1.0, rate: 0.9, volume: 0.9, voiceName: '' },
@@ -89,22 +89,30 @@ async function loadData() {
   }
 }
 
-// ── Chip Grids (Genre & Mood) ─────────────────────────────────────────────────
+// ── Chip Grids (Genre & Mood) — multi-select ─────────────────────────────────
 function initChips() {
-  buildChips('genreChips', state.genres, 'genre');
-  buildChips('moodChips', state.moods, 'mood');
+  buildChips('genreChips', state.genres, 'genres');
+  buildChips('moodChips', state.moods, 'moods');
 }
-function buildChips(containerId, items, type) {
+function buildChips(containerId, items, stateKey) {
   const container = $(containerId);
   if (!container) return;
   container.innerHTML = '';
+  // Ensure the state array exists
+  state[stateKey] = state[stateKey] || [];
   items.forEach(item => {
     const chip = el('button', 'chip', item);
     chip.type = 'button';
     chip.addEventListener('click', () => {
-      container.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-      chip.classList.add('active');
-      state[`selected${type.charAt(0).toUpperCase() + type.slice(1)}`] = item;
+      const arr = state[stateKey];
+      const idx = arr.indexOf(item);
+      if (idx >= 0) {
+        arr.splice(idx, 1);
+        chip.classList.remove('active');
+      } else {
+        arr.push(item);
+        chip.classList.add('active');
+      }
     });
     container.appendChild(chip);
   });
@@ -237,13 +245,6 @@ function initGenerateForm() {
   $('copySongBtn')?.addEventListener('click', copySong);
   $('saveSongBtn')?.addEventListener('click', saveSong);
   $('regenerateBtn')?.addEventListener('click', handleGenerate);
-  $('playBtn')?.addEventListener('click', togglePlay);
-  $('volumeSlider')?.addEventListener('input', e => {
-    if (window.speechSynthesis) window.speechSynthesis.volume = parseFloat(e.target.value);
-  });
-  $('speedSelect')?.addEventListener('change', e => {
-    state.voiceSettings.rate = parseFloat(e.target.value);
-  });
   $('doTranslateBtn')?.addEventListener('click', handleTranslate);
 
   // Lyrics tabs
@@ -273,8 +274,8 @@ async function handleGenerate() {
 
   const payload = {
     language: state.selectedLanguage.code,
-    genre: state.selectedGenre,
-    mood: state.selectedMood,
+    genres: state.selectedGenres,
+    moods: state.selectedMoods,
     theme: $('themeInput').value.trim(),
     artistStyle: $('artistStyle').value.trim(),
     customPrompt: $('customPrompt').value.trim(),

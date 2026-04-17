@@ -302,19 +302,27 @@ app.post('/api/generate-lyrics', optionalAuth, async (req, res) => {
     // (In production, use a proper session or IP-based counter)
   }
 
-  const { theme, genre, mood, language, customPrompt, artistStyle } = req.body;
+  const { theme, genres, moods, language, customPrompt, artistStyle,
+          // legacy single-value support
+          genre: genreSingle, mood: moodSingle } = req.body;
   if (!language) return res.status(400).json({ error: 'Language is required' });
 
   const langObj = LANGUAGES.find(l => l.code === language) || { name: 'English' };
   const langName = langObj.name;
+
+  // Support both array (new) and single string (legacy)
+  const genreList = Array.isArray(genres) && genres.length ? genres : (genreSingle ? [genreSingle] : ['Pop']);
+  const moodList  = Array.isArray(moods)  && moods.length  ? moods  : (moodSingle  ? [moodSingle]  : ['Romantic']);
+  const genreStr = genreList.join(', ');
+  const moodStr  = moodList.join(', ');
 
   const prompt = `You are a professional, award-winning songwriter.
 Write complete, original song lyrics in ${langName}.
 
 Song details:
 - Theme/Topic: ${theme || 'love and life'}
-- Genre: ${genre || 'Pop'}
-- Mood: ${mood || 'Romantic'}
+- Genre(s): ${genreStr}
+- Mood(s): ${moodStr}
 ${artistStyle ? `- Style inspired by: ${artistStyle}` : ''}
 ${customPrompt ? `- Additional direction: ${customPrompt}` : ''}
 
@@ -330,8 +338,8 @@ Format your response as JSON:
 {
   "title": "Song Title",
   "language": "${langName}",
-  "genre": "${genre || 'Pop'}",
-  "mood": "${mood || 'Romantic'}",
+  "genre": "${genreStr}",
+  "mood": "${moodStr}",
   "lyrics": "full lyrics with section markers",
   "englishTranslation": "complete English translation of the lyrics",
   "musicalNotes": "2-3 sentences describing the suggested melody, tempo, and instrumentation",
@@ -456,15 +464,16 @@ app.post('/api/tts-elevenlabs', async (req, res) => {
 // ─── Replicate — AI Singing (Bark) ───────────────────────────────────────────
 async function pollReplicate(predictionId) {
   const { default: fetch } = await import('node-fetch');
-  const headers = { 'Authorization': `Bearer ${process.env.REPLICATE_API_KEY}` };
-  for (let i = 0; i < 60; i++) {
-    await new Promise(r => setTimeout(r, 3000));
+  const headers = { 'Authorization': `Token ${process.env.REPLICATE_API_KEY}` };
+  for (let i = 0; i < 80; i++) {
+    await new Promise(r => setTimeout(r, 4000));
     const r = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, { headers });
     const p = await r.json();
+    console.log(`  Bark poll ${i+1}: status=${p.status}`);
     if (p.status === 'succeeded') return p.output;
-    if (p.status === 'failed' || p.status === 'canceled') throw new Error(p.error || 'Prediction failed');
+    if (p.status === 'failed' || p.status === 'canceled') throw new Error(p.error || `Prediction ${p.status}`);
   }
-  throw new Error('Prediction timed out after 3 minutes');
+  throw new Error('Prediction timed out (5+ min). Try a shorter excerpt.');
 }
 
 app.post('/api/generate-singing', async (req, res) => {
@@ -474,29 +483,58 @@ app.post('/api/generate-singing', async (req, res) => {
   const { lyrics, voiceStyle = 'en_speaker_6' } = req.body;
   if (!lyrics) return res.status(400).json({ success: false, error: 'No lyrics provided' });
 
-  const lines = lyrics.replace(/\[(.*?)\]/g, '').trim().split('\n')
-    .map(l => l.trim()).filter(Boolean).slice(0, 8);
-  const prompt = lines.map(l => `♪ ${l} ♪`).join('\n');
+  // Build a short, singing-optimised prompt — Bark sings better with fewer lines
+  const cleanLines = lyrics.replace(/\[(.*?)\]/g, '').trim().split('\n')
+    .map(l => l.trim()).filter(Boolean).slice(0, 6);
+
+  // Wrap each line in music notes so Bark treats it as singing, not speech
+  const prompt = '[singing]\n' + cleanLines.map(l => `♪ ${l} ♪`).join('\n');
+
+  console.log(`🎵 Bark singing request — voice: ${voiceStyle}, lines: ${cleanLines.length}`);
 
   try {
     const { default: fetch } = await import('node-fetch');
-    const createRes = await fetch('https://api.replicate.com/v1/models/suno-ai/bark/predictions', {
+
+    // Use the versioned predictions endpoint (more reliable than /models/*/predictions)
+    const createRes = await fetch('https://api.replicate.com/v1/predictions', {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${process.env.REPLICATE_API_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'wait=30' },
-      body: JSON.stringify({ input: { prompt, history_prompt: voiceStyle, text_temp: 0.7, waveform_temp: 0.7 } })
+      headers: {
+        'Authorization': `Token ${process.env.REPLICATE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        version: 'b76242b40d67c76ab6742e987628a2a9ac019e11d56ab96c4e91ce03b79b2787',
+        input: {
+          prompt,
+          history_prompt: voiceStyle,
+          text_temp: 0.7,
+          waveform_temp: 0.7,
+        },
+      }),
     });
+
     const prediction = await createRes.json();
-    if (!createRes.ok) throw new Error(prediction.detail || JSON.stringify(prediction));
+    console.log('Bark create response:', JSON.stringify(prediction).slice(0, 300));
 
-    let output = prediction.output;
-    if (!output && prediction.id) output = await pollReplicate(prediction.id);
+    if (!createRes.ok) {
+      throw new Error(prediction.detail || JSON.stringify(prediction));
+    }
 
-    const audioUrl = (typeof output === 'object' && output !== null)
-      ? (output.audio_out || Object.values(output)[0])
-      : output;
+    // Poll until done (Bark always runs async)
+    const output = await pollReplicate(prediction.id);
+
+    // Extract the audio URL from Bark's output structure
+    let audioUrl;
+    if (typeof output === 'string') {
+      audioUrl = output;
+    } else if (output && typeof output === 'object') {
+      audioUrl = output.audio_out || output.audio || Object.values(output).find(v => typeof v === 'string' && v.startsWith('http'));
+    }
+    if (!audioUrl) throw new Error('No audio URL in Bark response');
 
     res.json({ success: true, audioUrl });
   } catch (e) {
+    console.error('Bark error:', e.message);
     res.status(500).json({ success: false, error: e.message });
   }
 });
