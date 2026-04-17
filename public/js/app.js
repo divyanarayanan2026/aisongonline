@@ -47,10 +47,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // ── Tab Navigation ────────────────────────────────────────────────────────────
 function initTabs() {
-  document.querySelectorAll('.nav-btn').forEach(btn => {
+  // Only wire up buttons that have a data-tab (excludes Pricing button)
+  document.querySelectorAll('.nav-btn[data-tab]').forEach(btn => {
     btn.addEventListener('click', () => {
       const tab = btn.dataset.tab;
-      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.nav-btn[data-tab]').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
       btn.classList.add('active');
       $(`tab-${tab}`).classList.remove('hidden');

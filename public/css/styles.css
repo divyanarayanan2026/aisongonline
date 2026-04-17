@@ -133,21 +133,16 @@ button, input, select, textarea {
 .logo:hover { color: var(--violet); }
 
 .logo-img {
-  height: 42px;
+  height: 44px;
   width: auto;
-  border-radius: 10px;
   object-fit: contain;
-  /* Brighten + add purple glow so it's visible on dark header */
-  filter: brightness(1.35) saturate(1.1) drop-shadow(0 0 8px rgba(168, 85, 247, 0.55));
 }
 
 .footer-logo-img {
-  height: 36px;
+  height: 38px;
   width: auto;
-  border-radius: 8px;
   object-fit: contain;
-  filter: brightness(1.25) saturate(1.1) drop-shadow(0 0 6px rgba(168, 85, 247, 0.4));
-  opacity: 0.9;
+  opacity: 0.85;
 }
 
 /* Nav */
@@ -518,10 +513,15 @@ button, input, select, textarea {
 }
 
 .tab-panel {
-  display: none;
+  /* shown by default; JS adds .hidden to inactive panels */
+  animation: fadeUp 0.25s ease;
 }
-.tab-panel.active {
-  display: block;
+.tab-panel.hidden {
+  display: none !important;
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .two-col {
