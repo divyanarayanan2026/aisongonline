@@ -609,7 +609,7 @@ function initVoiceStudio() {
   $('stopRecordBtn').addEventListener('click', stopRecording);
   $('playRecordingBtn').addEventListener('click', playRecording);
   $('clearVoiceBtn').addEventListener('click', clearRecording);
-  $('testVoiceBtn').addEventListener('click', testVoice);
+  $('testVoiceBtn')?.addEventListener('click', testVoice);
 
   // File upload
   const fileInput = $('voiceFileInput');
